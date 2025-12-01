@@ -13,13 +13,41 @@ static INPUT: &str = include_str!("../input/2025-01.txt");
 fn main() {
     let rotations = parse_input(INPUT).expect("Failed to parse real input.");
     let p1 = times_at_zero(50, &rotations);
+    let p2 = times_at_zero_part_two(50, &rotations);
     println!("Part one: {p1}");
+    println!("Part two: {p2}");
 }
 
 #[derive(Debug, Eq, PartialEq)]
 enum Rotation {
     Left(i32),
     Right(i32),
+}
+
+impl Rotation {
+    fn delta(&self) -> i32 {
+        match self {
+            Rotation::Left(n) => -*n,
+            Rotation::Right(n) => *n,
+        }
+    }
+
+    fn value(&self) -> i32 {
+        match self {
+            Rotation::Left(n) => *n,
+            Rotation::Right(n) => *n,
+        }
+    }
+}
+
+impl core::fmt::Display for Rotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (c, n) = match self {
+            Rotation::Left(n) => ('L', *n),
+            Rotation::Right(n) => ('R', *n),
+        };
+        write!(f, "{c}{n:2}")
+    }
 }
 
 fn parse_line(line: &str) -> IResult<&str, Rotation> {
@@ -58,11 +86,28 @@ fn times_at_zero(start: i32, rotations: &[Rotation]) -> i32 {
     times
 }
 
+fn times_at_zero_part_two(start: i32, rotations: &[Rotation]) -> i32 {
+    let mut current = start;
+    let mut times = 0;
+    for rotation in rotations {
+        let d = rotation.delta().signum();
+        // Dumb but works.
+        for _ in 0..rotation.value() {
+            current += d;
+            current %= 100;
+            if current == 0 {
+                times += 1;
+            } else if current == -1 {
+                current = 99;
+            }
+        }
+    }
+    times
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{Rotation, times_at_zero};
-
-    use super::parse_input;
+    use super::{Rotation, parse_input, times_at_zero, times_at_zero_part_two};
 
     static PART_ONE_TEST_INPUT: &str = "\
 L68
@@ -75,6 +120,11 @@ L1
 L99
 R14
 L82";
+
+    static ENTIRELY_IN_RANGE: &str = "\
+L50
+R10
+L10";
 
     #[test]
     fn parse_test_input() {
@@ -106,5 +156,26 @@ L82";
         let rotations = parse_input(super::INPUT).expect("Real input failed to parse");
         let result = times_at_zero(50, &rotations);
         assert_eq!(result, 999);
+    }
+
+    #[test]
+    pub fn test_times_at_zero_part_two() {
+        let rotations = parse_input(PART_ONE_TEST_INPUT).expect("Test input failed to parse");
+        let result = times_at_zero_part_two(50, &rotations);
+        assert_eq!(result, 6);
+    }
+
+    #[test]
+    pub fn test_times_at_zero_part_two_in_range() {
+        let rotations = parse_input(ENTIRELY_IN_RANGE).expect("In-range input failed to parse");
+        let result = times_at_zero_part_two(50, &rotations);
+        assert_eq!(result, 2);
+    }
+
+    #[test]
+    pub fn test_part_two_known_answer() {
+        let rotations = parse_input(super::INPUT).expect("Real input failed to parse");
+        let result = times_at_zero_part_two(50, &rotations);
+        assert_eq!(result, 6099);
     }
 }
