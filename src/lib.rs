@@ -13,3 +13,22 @@ pub fn run(day: usize) -> anyhow::Result<String> {
     };
     day_fn(input)
 }
+
+/// Handy extension methods for numeric types.
+trait NumUtil {
+    fn n_digits(&self) -> u32;
+}
+
+macro_rules! impl_NumUtil {
+    ($($t:ty)+) => {
+        $(
+            impl NumUtil for $t {
+                fn n_digits(&self) -> u32 {
+                    self.ilog10() + 1
+                }
+            }
+        )+
+    };
+}
+
+impl_NumUtil!(u8 u16 u32 u64);
