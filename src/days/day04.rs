@@ -1,4 +1,7 @@
-use std::{collections::HashSet, ops::RangeInclusive};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::RangeInclusive,
+};
 
 use crate::util::Answer;
 
@@ -10,7 +13,8 @@ pub fn solve(input: &str) -> anyhow::Result<String> {
 }
 
 fn parse_input(s: &str) -> Grid {
-    let mut filled = HashSet::with_capacity(100);
+    let mut filled =
+        HashSet::with_capacity_and_hasher(1024, foldhash::fast::RandomState::default());
     let mut max_row_idx = 0;
     let mut max_col_idx = 0;
     for (row_idx, row) in s.lines().enumerate() {
@@ -22,11 +26,7 @@ fn parse_input(s: &str) -> Grid {
             }
         }
     }
-    Grid {
-        row_range: 0..=max_row_idx,
-        col_range: 0..=max_col_idx,
-        filled,
-    }
+    Grid::new(filled)
 }
 
 fn solve_part_one(grid: &Grid) -> usize {
@@ -46,7 +46,8 @@ fn solve_part_two(grid: &mut Grid) -> usize {
 struct Grid {
     row_range: RangeInclusive<i16>,
     col_range: RangeInclusive<i16>,
-    filled: HashSet<(i16, i16)>,
+    filled: HashSet<(i16, i16), foldhash::fast::RandomState>,
+    neighbours_map: HashMap<(i16, i16), Vec<(i16, i16)>, foldhash::fast::RandomState>,
 }
 
 impl Grid {
@@ -61,6 +62,26 @@ impl Grid {
         (1, 1),
     ];
 
+    fn new(filled: HashSet<(i16, i16), foldhash::fast::RandomState>) -> Self {
+        let mut max_row = 0;
+        let mut max_col = 0;
+        let mut neighbours_map =
+            HashMap::with_capacity_and_hasher(filled.len(), foldhash::fast::RandomState::default());
+        for location in &filled {
+            max_row = max_row.max(location.0);
+            max_col = max_col.max(location.1);
+            let neighbours = Self::compute_neighbours(&filled, location);
+            neighbours_map.insert(*location, neighbours);
+        }
+
+        Self {
+            row_range: 0..=max_row,
+            col_range: 0..=max_col,
+            filled,
+            neighbours_map,
+        }
+    }
+
     #[allow(dead_code)]
     fn contains(&self, location: &(i16, i16)) -> bool {
         self.filled.contains(location)
@@ -72,13 +93,23 @@ impl Grid {
         self.row_range.contains(row) && self.col_range.contains(col)
     }
 
-    fn filled_neighbours(&self, location: &(i16, i16)) -> Vec<(i16, i16)> {
-        let (row, col) = location;
-        Self::NEIGHBOUR_DELTAS
-            .iter()
-            .map(|&(rd, cd)| (row - rd, col - cd))
-            .filter(|location| self.filled.contains(location))
+    fn just_neighbours(location: &(i16, i16)) -> [(i16, i16); 8] {
+        let (row, col) = *location;
+        Self::NEIGHBOUR_DELTAS.map(|(rd, cd)| (row - rd, col - cd))
+    }
+
+    fn compute_neighbours(
+        filled: &HashSet<(i16, i16), foldhash::fast::RandomState>,
+        location: &(i16, i16),
+    ) -> Vec<(i16, i16)> {
+        Self::just_neighbours(location)
+            .into_iter()
+            .filter(|location| filled.contains(location))
             .collect()
+    }
+
+    fn filled_neighbours(&self, location: &(i16, i16)) -> Vec<(i16, i16)> {
+        self.neighbours_map.get(location).cloned().unwrap()
     }
 
     fn accessible_rolls(&self) -> Vec<(i16, i16)> {
@@ -95,7 +126,15 @@ impl Grid {
     fn remove_accessible(&mut self) -> usize {
         let accessible = self.accessible_rolls();
         for roll in &accessible {
-            self.filled.remove(roll);
+            if self.filled.remove(roll) {
+                // Roll was removed, recompute adjacency for neighbours.
+                for neighbour in self.filled_neighbours(roll) {
+                    let new_neighbours = Self::compute_neighbours(&self.filled, &neighbour);
+                    self.neighbours_map
+                        .entry(neighbour)
+                        .and_modify(|m| *m = new_neighbours);
+                }
+            }
         }
         accessible.len()
     }
