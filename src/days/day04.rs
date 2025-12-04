@@ -39,25 +39,28 @@ fn solve_part_two(grid: &mut Grid) -> usize {
 struct Grid {
     filled: Vec<Vec<bool>>,
     pending_removal: VecDeque<(usize, usize)>,
+    queued_for_removal: Vec<Vec<bool>>,
 }
 
 impl Grid {
     fn new(filled: Vec<Vec<bool>>, to_check: VecDeque<(usize, usize)>) -> Self {
+        let size = filled.len();
         let mut grid = Self {
             filled,
             // In part 2 this grows up to 1819; 2048 * (8 * 2) == 32K.
             pending_removal: VecDeque::with_capacity(2048),
+            queued_for_removal: vec![vec![false; size]; size],
         };
         // Find all the initially accessible rolls.
         for location in to_check {
-            if grid.filled_neighbours(&location).len() < 4 {
-                grid.pending_removal.push_back(location);
+            if grid.is_accessible(location) {
+                grid.queue_for_removal(location);
             }
         }
         grid
     }
 
-    fn compute_neighbours(filled: &[Vec<bool>], location: &(usize, usize)) -> Vec<(usize, usize)> {
+    fn filled_neighbours(&self, location: &(usize, usize)) -> Vec<(usize, usize)> {
         let (row, col) = *location;
         let possible = [
             // Row above
@@ -75,31 +78,39 @@ impl Grid {
         // There is a noticeable slow down here with .iter().filter().collect(), 8ms average.
         let mut neighbours = Vec::with_capacity(8);
         for (row, col) in possible {
-            if filled[row][col] {
+            if self.filled[row][col] {
                 neighbours.push((row, col));
             }
         }
         neighbours
     }
 
-    fn filled_neighbours(&self, location: &(usize, usize)) -> Vec<(usize, usize)> {
-        Self::compute_neighbours(&self.filled, location)
+    fn already_queued(&self, location: (usize, usize)) -> bool {
+        let (row, col) = location;
+        self.queued_for_removal[row][col]
+    }
+
+    fn queue_for_removal(&mut self, location: (usize, usize)) {
+        self.pending_removal.push_back(location);
+        self.queued_for_removal[location.0][location.1] = true;
+    }
+
+    fn is_accessible(&self, location: (usize, usize)) -> bool {
+        self.filled_neighbours(&location).len() < 4
     }
 
     fn remove_accessible(&mut self) -> usize {
         let mut removed = 0;
         while let Some(roll) = self.pending_removal.pop_front() {
-            let roll_present = &mut self.filled[roll.0][roll.1];
             // Prevent double-counting removals (a location may have been removed earlier if it was
             // already present in the VecDeque). This will happen a few thousand times!
-            if *roll_present {
-                *roll_present = false;
-                removed += 1;
-                // Maybe some neighbours can now be removed.
-                for neighbour in self.filled_neighbours(&roll) {
-                    if self.filled_neighbours(&neighbour).len() < 4 {
-                        self.pending_removal.push_back(neighbour);
-                    }
+            self.filled[roll.0][roll.1] = false;
+            removed += 1;
+            // Maybe some neighbours can now be removed.
+            for neighbour in self.filled_neighbours(&roll) {
+                // Check we haven't already put this neighbour in the queue.
+                if !self.already_queued(neighbour) && self.is_accessible(neighbour) {
+                    self.queue_for_removal(neighbour);
                 }
             }
         }
