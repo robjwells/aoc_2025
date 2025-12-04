@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::RangeInclusive,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::util::Answer;
 
@@ -13,20 +10,21 @@ pub fn solve(input: &str) -> anyhow::Result<String> {
 }
 
 fn parse_input(s: &str) -> Grid {
-    let mut filled =
-        HashSet::with_capacity_and_hasher(1024, foldhash::fast::RandomState::default());
-    let mut max_row_idx = 0;
-    let mut max_col_idx = 0;
+    // Pad row with empty start and end columns, so idx ± 1 is always in bounds.
+    let size = s.find('\n').unwrap() + 2;
+    let mut present = HashSet::with_hasher(foldhash::fast::RandomState::default());
+    let mut filled = vec![vec![false; size]; size];
+
     for (row_idx, row) in s.lines().enumerate() {
-        max_row_idx = max_row_idx.max(row_idx as i16);
         for (col_idx, col_char) in row.chars().enumerate() {
-            max_col_idx = max_col_idx.max(col_idx as i16);
             if col_char == '@' {
-                filled.insert((row_idx as i16, col_idx as i16));
+                filled[row_idx + 1][col_idx + 1] = true;
+                present.insert((row_idx + 1, col_idx + 1));
             }
         }
     }
-    Grid::new(filled)
+
+    Grid::new(present, filled)
 }
 
 fn solve_part_one(grid: &Grid) -> usize {
@@ -44,77 +42,62 @@ fn solve_part_two(grid: &mut Grid) -> usize {
 }
 
 struct Grid {
-    row_range: RangeInclusive<i16>,
-    col_range: RangeInclusive<i16>,
-    filled: HashSet<(i16, i16), foldhash::fast::RandomState>,
-    neighbours_map: HashMap<(i16, i16), Vec<(i16, i16)>, foldhash::fast::RandomState>,
+    present: HashSet<(usize, usize), foldhash::fast::RandomState>,
+    filled: Vec<Vec<bool>>,
+    cache: HashMap<(usize, usize), Vec<(usize, usize)>, foldhash::fast::RandomState>,
 }
 
 impl Grid {
-    const NEIGHBOUR_DELTAS: [(i16, i16); 8] = [
-        (-1, -1),
-        (-1, 0),
-        (-1, 1),
-        (0, -1),
-        (0, 1),
-        (1, -1),
-        (1, 0),
-        (1, 1),
-    ];
-
-    fn new(filled: HashSet<(i16, i16), foldhash::fast::RandomState>) -> Self {
-        let mut max_row = 0;
-        let mut max_col = 0;
-        let mut neighbours_map =
-            HashMap::with_capacity_and_hasher(filled.len(), foldhash::fast::RandomState::default());
-        for location in &filled {
-            max_row = max_row.max(location.0);
-            max_col = max_col.max(location.1);
+    fn new(
+        present: HashSet<(usize, usize), foldhash::fast::RandomState>,
+        filled: Vec<Vec<bool>>,
+    ) -> Self {
+        let mut cache = HashMap::with_capacity_and_hasher(
+            present.len(),
+            foldhash::fast::RandomState::default(),
+        );
+        for location in &present {
             let neighbours = Self::compute_neighbours(&filled, location);
-            neighbours_map.insert(*location, neighbours);
+            cache.insert(*location, neighbours);
         }
-
         Self {
-            row_range: 0..=max_row,
-            col_range: 0..=max_col,
+            present,
             filled,
-            neighbours_map,
+            cache,
         }
     }
 
-    #[allow(dead_code)]
-    fn contains(&self, location: &(i16, i16)) -> bool {
-        self.filled.contains(location)
-    }
-
-    #[allow(dead_code)]
-    fn in_grid(&self, location: &(i16, i16)) -> bool {
-        let (row, col) = location;
-        self.row_range.contains(row) && self.col_range.contains(col)
-    }
-
-    fn just_neighbours(location: &(i16, i16)) -> [(i16, i16); 8] {
+    fn compute_neighbours(filled: &[Vec<bool>], location: &(usize, usize)) -> Vec<(usize, usize)> {
         let (row, col) = *location;
-        Self::NEIGHBOUR_DELTAS.map(|(rd, cd)| (row - rd, col - cd))
+        let possible = [
+            // Row above
+            (row - 1, col - 1),
+            (row - 1, col),
+            (row - 1, col + 1),
+            // Same row
+            (row, col - 1),
+            (row, col + 1),
+            // Row below
+            (row + 1, col - 1),
+            (row + 1, col),
+            (row + 1, col + 1),
+        ];
+        let mut neighbours = Vec::with_capacity(8);
+        for (row, col) in possible {
+            if filled[row][col] {
+                neighbours.push((row, col));
+            }
+        }
+        neighbours
     }
 
-    fn compute_neighbours(
-        filled: &HashSet<(i16, i16), foldhash::fast::RandomState>,
-        location: &(i16, i16),
-    ) -> Vec<(i16, i16)> {
-        Self::just_neighbours(location)
-            .into_iter()
-            .filter(|location| filled.contains(location))
-            .collect()
+    fn filled_neighbours(&self, location: &(usize, usize)) -> &[(usize, usize)] {
+        self.cache.get(location).unwrap()
     }
 
-    fn filled_neighbours(&self, location: &(i16, i16)) -> Vec<(i16, i16)> {
-        self.neighbours_map.get(location).cloned().unwrap()
-    }
-
-    fn accessible_rolls(&self) -> Vec<(i16, i16)> {
+    fn accessible_rolls(&self) -> Vec<(usize, usize)> {
         let mut accessible = Vec::new();
-        for roll in &self.filled {
+        for roll in &self.present {
             let filled_neighbours = self.filled_neighbours(roll);
             if filled_neighbours.len() < 4 {
                 accessible.push(*roll);
@@ -126,13 +109,13 @@ impl Grid {
     fn remove_accessible(&mut self) -> usize {
         let accessible = self.accessible_rolls();
         for roll in &accessible {
-            if self.filled.remove(roll) {
-                // Roll was removed, recompute adjacency for neighbours.
-                for neighbour in self.filled_neighbours(roll) {
-                    let new_neighbours = Self::compute_neighbours(&self.filled, &neighbour);
-                    self.neighbours_map
+            self.filled[roll.0][roll.1] = false;
+            if self.present.remove(roll) {
+                // Update the neighbour cache
+                for neighbour in self.filled_neighbours(roll).to_vec() {
+                    self.cache
                         .entry(neighbour)
-                        .and_modify(|m| *m = new_neighbours);
+                        .and_modify(|e| *e = Self::compute_neighbours(&self.filled, &neighbour));
                 }
             }
         }
@@ -159,21 +142,21 @@ mod test {
     #[test]
     fn parse_test_input() {
         let locations = parse_input(TEST_INPUT);
-        assert!(locations.contains(&(0, 2)));
-        assert!(locations.contains(&(0, 8)));
-        assert!(locations.contains(&(1, 0)));
-        assert!(locations.contains(&(1, 1)));
-        assert!(locations.contains(&(1, 9)));
-        assert!(locations.contains(&(9, 0)));
-        assert!(locations.contains(&(9, 8)));
+        assert!(locations.filled[1][3]);
+        assert!(locations.filled[1][9]);
+        assert!(locations.filled[2][1]);
+        assert!(locations.filled[2][2]);
+        assert!(locations.filled[2][10]);
+        assert!(locations.filled[10][1]);
+        assert!(locations.filled[10][9]);
     }
 
     #[test]
     fn test_input_neighbours() {
         let grid = parse_input(TEST_INPUT);
-        let mut neighbours = grid.filled_neighbours(&(4, 9));
+        let mut neighbours = grid.filled_neighbours(&(5, 10)).to_vec();
         neighbours.sort();
-        let mut expected = vec![(3, 8), (4, 8), (5, 9)];
+        let mut expected = vec![(4, 9), (5, 9), (6, 10)];
         expected.sort();
         assert_eq!(neighbours, expected);
     }
