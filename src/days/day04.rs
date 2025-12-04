@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::VecDeque;
 
 use crate::util::Answer;
 
@@ -12,59 +12,49 @@ pub fn solve(input: &str) -> anyhow::Result<String> {
 fn parse_input(s: &str) -> Grid {
     // Pad row with empty start and end columns, so idx ± 1 is always in bounds.
     let size = s.find('\n').unwrap() + 2;
-    let mut present = HashSet::with_hasher(foldhash::fast::RandomState::default());
     let mut filled = vec![vec![false; size]; size];
+    let mut to_check = VecDeque::new();
 
     for (row_idx, row) in s.lines().enumerate() {
         for (col_idx, col_char) in row.chars().enumerate() {
             if col_char == '@' {
+                // +1 to both indices to account for the padding.
                 filled[row_idx + 1][col_idx + 1] = true;
-                present.insert((row_idx + 1, col_idx + 1));
+                to_check.push_back((row_idx + 1, col_idx + 1));
             }
         }
     }
 
-    Grid::new(present, filled)
+    Grid::new(filled, to_check)
 }
 
 fn solve_part_one(grid: &Grid) -> usize {
-    grid.accessible_rolls().len()
+    grid.pending_removal.len()
 }
 
 fn solve_part_two(grid: &mut Grid) -> usize {
-    let mut total = 0;
-    while let removed = grid.remove_accessible()
-        && removed != 0
-    {
-        total += removed;
-    }
-    total
+    grid.remove_accessible()
 }
 
 struct Grid {
-    present: HashSet<(usize, usize), foldhash::fast::RandomState>,
     filled: Vec<Vec<bool>>,
-    cache: HashMap<(usize, usize), Vec<(usize, usize)>, foldhash::fast::RandomState>,
+    pending_removal: VecDeque<(usize, usize)>,
 }
 
 impl Grid {
-    fn new(
-        present: HashSet<(usize, usize), foldhash::fast::RandomState>,
-        filled: Vec<Vec<bool>>,
-    ) -> Self {
-        let mut cache = HashMap::with_capacity_and_hasher(
-            present.len(),
-            foldhash::fast::RandomState::default(),
-        );
-        for location in &present {
-            let neighbours = Self::compute_neighbours(&filled, location);
-            cache.insert(*location, neighbours);
-        }
-        Self {
-            present,
+    fn new(filled: Vec<Vec<bool>>, to_check: VecDeque<(usize, usize)>) -> Self {
+        let mut grid = Self {
             filled,
-            cache,
+            // In part 2 this grows up to 1819; 2048 * (8 * 2) == 32K.
+            pending_removal: VecDeque::with_capacity(2048),
+        };
+        // Find all the initially accessible rolls.
+        for location in to_check {
+            if grid.filled_neighbours(&location).len() < 4 {
+                grid.pending_removal.push_back(location);
+            }
         }
+        grid
     }
 
     fn compute_neighbours(filled: &[Vec<bool>], location: &(usize, usize)) -> Vec<(usize, usize)> {
@@ -82,6 +72,7 @@ impl Grid {
             (row + 1, col),
             (row + 1, col + 1),
         ];
+        // There is a noticeable slow down here with .iter().filter().collect(), 8ms average.
         let mut neighbours = Vec::with_capacity(8);
         for (row, col) in possible {
             if filled[row][col] {
@@ -91,35 +82,28 @@ impl Grid {
         neighbours
     }
 
-    fn filled_neighbours(&self, location: &(usize, usize)) -> &[(usize, usize)] {
-        self.cache.get(location).unwrap()
-    }
-
-    fn accessible_rolls(&self) -> Vec<(usize, usize)> {
-        let mut accessible = Vec::new();
-        for roll in &self.present {
-            let filled_neighbours = self.filled_neighbours(roll);
-            if filled_neighbours.len() < 4 {
-                accessible.push(*roll);
-            }
-        }
-        accessible
+    fn filled_neighbours(&self, location: &(usize, usize)) -> Vec<(usize, usize)> {
+        Self::compute_neighbours(&self.filled, location)
     }
 
     fn remove_accessible(&mut self) -> usize {
-        let accessible = self.accessible_rolls();
-        for roll in &accessible {
-            self.filled[roll.0][roll.1] = false;
-            if self.present.remove(roll) {
-                // Update the neighbour cache
-                for neighbour in self.filled_neighbours(roll).to_vec() {
-                    self.cache
-                        .entry(neighbour)
-                        .and_modify(|e| *e = Self::compute_neighbours(&self.filled, &neighbour));
+        let mut removed = 0;
+        while let Some(roll) = self.pending_removal.pop_front() {
+            let roll_present = &mut self.filled[roll.0][roll.1];
+            // Prevent double-counting removals (a location may have been removed earlier if it was
+            // already present in the VecDeque). This will happen a few thousand times!
+            if *roll_present {
+                *roll_present = false;
+                removed += 1;
+                // Maybe some neighbours can now be removed.
+                for neighbour in self.filled_neighbours(&roll) {
+                    if self.filled_neighbours(&neighbour).len() < 4 {
+                        self.pending_removal.push_back(neighbour);
+                    }
                 }
             }
         }
-        accessible.len()
+        removed
     }
 }
 
