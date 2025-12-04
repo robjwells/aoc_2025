@@ -3,29 +3,10 @@ use std::collections::VecDeque;
 use crate::util::Answer;
 
 pub fn solve(input: &str) -> anyhow::Result<String> {
-    let mut grid = parse_input(input);
+    let mut grid = Grid::from(input);
     let p1 = solve_part_one(&grid);
     let p2 = solve_part_two(&mut grid);
     Answer::first(4, p1).second(p2).report()
-}
-
-fn parse_input(s: &str) -> Grid {
-    // Pad row with empty start and end columns, so idx ± 1 is always in bounds.
-    let size = s.find('\n').unwrap() + 2;
-    let mut filled = vec![vec![false; size]; size];
-    let mut to_check = VecDeque::new();
-
-    for (row_idx, row) in s.lines().enumerate() {
-        for (col_idx, col_char) in row.chars().enumerate() {
-            if col_char == '@' {
-                // +1 to both indices to account for the padding.
-                filled[row_idx + 1][col_idx + 1] = true;
-                to_check.push_back((row_idx + 1, col_idx + 1));
-            }
-        }
-    }
-
-    Grid::new(filled, to_check)
 }
 
 fn solve_part_one(grid: &Grid) -> usize {
@@ -75,7 +56,7 @@ impl Grid {
             (row + 1, col),
             (row + 1, col + 1),
         ];
-        // There is a noticeable slow down here with .iter().filter().collect(), 8ms average.
+        // There is a noticeable slow down here with .iter().filter().collect(), 3ms average.
         let mut neighbours = Vec::with_capacity(8);
         for (row, col) in possible {
             if self.filled[row][col] {
@@ -102,8 +83,6 @@ impl Grid {
     fn remove_accessible(&mut self) -> usize {
         let mut removed = 0;
         while let Some(roll) = self.pending_removal.pop_front() {
-            // Prevent double-counting removals (a location may have been removed earlier if it was
-            // already present in the VecDeque). This will happen a few thousand times!
             self.filled[roll.0][roll.1] = false;
             removed += 1;
             // Maybe some neighbours can now be removed.
@@ -118,10 +97,30 @@ impl Grid {
     }
 }
 
+impl From<&str> for Grid {
+    fn from(value: &str) -> Self {
+        // Pad row with empty start and end columns, so idx ± 1 is always in bounds.
+        let size = value.find('\n').unwrap() + 2;
+        let mut filled = vec![vec![false; size]; size];
+        let mut to_check = VecDeque::new();
+
+        for (row_idx, row) in value.lines().enumerate() {
+            for (col_idx, col_char) in row.chars().enumerate() {
+                if col_char == '@' {
+                    // +1 to both indices to account for the padding.
+                    filled[row_idx + 1][col_idx + 1] = true;
+                    to_check.push_back((row_idx + 1, col_idx + 1));
+                }
+            }
+        }
+
+        Grid::new(filled, to_check)
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::parse_input;
-
+    use super::Grid;
     static TEST_INPUT: &str = "\
 ..@@.@@@@.
 @@@.@.@.@@
@@ -136,19 +135,19 @@ mod test {
 
     #[test]
     fn parse_test_input() {
-        let locations = parse_input(TEST_INPUT);
-        assert!(locations.filled[1][3]);
-        assert!(locations.filled[1][9]);
-        assert!(locations.filled[2][1]);
-        assert!(locations.filled[2][2]);
-        assert!(locations.filled[2][10]);
-        assert!(locations.filled[10][1]);
-        assert!(locations.filled[10][9]);
+        let grid = Grid::from(TEST_INPUT);
+        assert!(grid.filled[1][3]);
+        assert!(grid.filled[1][9]);
+        assert!(grid.filled[2][1]);
+        assert!(grid.filled[2][2]);
+        assert!(grid.filled[2][10]);
+        assert!(grid.filled[10][1]);
+        assert!(grid.filled[10][9]);
     }
 
     #[test]
     fn test_input_neighbours() {
-        let grid = parse_input(TEST_INPUT);
+        let grid = Grid::from(TEST_INPUT);
         let mut neighbours = grid.filled_neighbours(&(5, 10)).to_vec();
         neighbours.sort();
         let mut expected = vec![(4, 9), (5, 9), (6, 10)];
@@ -158,29 +157,29 @@ mod test {
 
     #[test]
     fn part_one_test_input() {
-        let locations = parse_input(TEST_INPUT);
-        let result = super::solve_part_one(&locations);
+        let grid = Grid::from(TEST_INPUT);
+        let result = super::solve_part_one(&grid);
         assert_eq!(result, 13);
     }
 
     #[test]
     fn part_one_known_answer() {
-        let locations = parse_input(crate::days::get_input(4).unwrap());
-        let result = super::solve_part_one(&locations);
+        let grid = Grid::from(crate::days::get_input(4).unwrap());
+        let result = super::solve_part_one(&grid);
         assert_eq!(result, 1428);
     }
 
     #[test]
     fn part_two_test_input() {
-        let mut locations = parse_input(TEST_INPUT);
-        let result = super::solve_part_two(&mut locations);
+        let mut grid = Grid::from(TEST_INPUT);
+        let result = super::solve_part_two(&mut grid);
         assert_eq!(result, 43);
     }
 
     #[test]
     fn part_two_known_answer() {
-        let mut locations = parse_input(crate::days::get_input(4).unwrap());
-        let result = super::solve_part_two(&mut locations);
+        let mut grid = Grid::from(crate::days::get_input(4).unwrap());
+        let result = super::solve_part_two(&mut grid);
         assert_eq!(result, 8936);
     }
 }
