@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::RangeInclusive, str::FromStr};
+use std::{cmp::Ordering, collections::VecDeque, ops::RangeInclusive, str::FromStr};
 
 use nom::{
     IResult, Parser,
@@ -24,14 +24,27 @@ struct Database {
 }
 
 impl Database {
-    fn is_fresh(&self, ingredient: u64) -> bool {
-        self.fresh_ranges.iter().any(|r| r.contains(&ingredient))
+    fn is_fresh(&self, ingredient: &u64) -> bool {
+        // Use binary search to try to find a range that contains ingredient.
+        // Not the logic is inverted: we exclude ranges that couldn't contain
+        // the ingredient.
+        self.fresh_ranges
+            .binary_search_by(|probe| {
+                if probe.start() > ingredient {
+                    Ordering::Greater
+                } else if probe.end() < ingredient {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .is_ok()
     }
 
     fn count_available_fresh(&self) -> usize {
         self.available_ingredients
             .iter()
-            .filter(|i| self.is_fresh(**i))
+            .filter(|i| self.is_fresh(i))
             .count()
     }
 
@@ -145,8 +158,8 @@ mod test {
     #[test]
     fn part_one_test_freshness() -> anyhow::Result<()> {
         let database: Database = TEST_INPUT.parse()?;
-        assert!(!database.is_fresh(32));
-        assert!(database.is_fresh(5));
+        assert!(!database.is_fresh(&32));
+        assert!(database.is_fresh(&5));
         Ok(())
     }
 
