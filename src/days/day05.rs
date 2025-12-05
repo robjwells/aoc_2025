@@ -1,5 +1,4 @@
-#![allow(dead_code, unused_mut, unused)]
-use std::{ops::RangeInclusive, str::FromStr};
+use std::{collections::VecDeque, ops::RangeInclusive, str::FromStr};
 
 use nom::{
     IResult, Parser,
@@ -15,7 +14,8 @@ use crate::util::Answer;
 pub fn solve(input: &str) -> anyhow::Result<String> {
     let database: Database = input.parse()?;
     let p1 = database.count_available_fresh();
-    Answer::first(5, p1).report()
+    let p2 = database.count_all_fresh();
+    Answer::first(5, p1).second(p2).report()
 }
 
 struct Database {
@@ -33,6 +33,13 @@ impl Database {
             .iter()
             .filter(|i| self.is_fresh(**i))
             .count()
+    }
+
+    fn count_all_fresh(&self) -> u64 {
+        self.fresh_ranges
+            .iter()
+            .map(|r| *r.end() - *r.start() + 1)
+            .sum()
     }
 }
 
@@ -64,13 +71,12 @@ fn _parse_input(input: &str) -> IResult<&str, Database> {
 
     let (remaining, mut ranges) = range_list(input)?;
     let (remaining, _) = double_newline(remaining)?;
-    let (remaining, mut ingredients) = ingredients_list(remaining)?;
+    let (remaining, ingredients) = ingredients_list(remaining)?;
     let (remaining, _) = trailing_newline(remaining)?;
     assert!(remaining.is_empty(), "Leftover input: {remaining:?}");
 
-    // Ensure ranges and ingredients are sorted.
-    ranges.sort_unstable_by_key(|r| (*r.start(), *r.end()));
-    ingredients.sort_unstable();
+    // Pre-emptively merge overlapping ranges.
+    ranges = merge_ranges(ranges);
 
     Ok((
         "",
@@ -79,6 +85,28 @@ fn _parse_input(input: &str) -> IResult<&str, Database> {
             available_ingredients: ingredients,
         },
     ))
+}
+
+fn merge_ranges(mut ranges: Vec<RangeInclusive<u64>>) -> Vec<RangeInclusive<u64>> {
+    ranges.sort_unstable_by_key(|r| *r.start());
+    let mut ranges: VecDeque<_> = ranges.into();
+    let mut merged = Vec::new();
+
+    while let Some(mut working) = ranges.pop_front() {
+        while let Some(next) = ranges.pop_front() {
+            if working.contains(next.start()) {
+                let (start, end) = working.into_inner();
+                working = start..=(end.max(*next.end()));
+            } else {
+                // Put the disjoint range back at the front of the queue.
+                ranges.push_front(next);
+                break;
+            }
+        }
+        merged.push(working);
+    }
+
+    merged
 }
 
 #[cfg(test)]
@@ -99,11 +127,15 @@ mod test {
 32
 ";
 
+    fn real_input() -> &'static str {
+        crate::days::get_input(5).unwrap()
+    }
+
     #[test]
     fn parse_test_input() -> anyhow::Result<()> {
         let database: Database = TEST_INPUT.parse()?;
-        // Ranges and available ingredients are both sorted after parsing.
-        let expected_ranges = vec![3..=5, 10..=14, 12..=18, 16..=20];
+        // Ranges are merged after parsing.
+        let expected_ranges = vec![3..=5, 10..=20];
         let expected_available = vec![1, 5, 8, 11, 17, 32];
         assert_eq!(database.fresh_ranges, expected_ranges);
         assert_eq!(database.available_ingredients, expected_available);
@@ -127,10 +159,26 @@ mod test {
     }
 
     #[test]
-    fn parse_real_input() -> anyhow::Result<()> {
-        let database: Database = crate::days::get_input(5).unwrap().parse()?;
-        assert_eq!(database.fresh_ranges.len(), 190);
-        assert_eq!(database.available_ingredients.len(), 1000);
+    pub fn part_one_known_answer() -> anyhow::Result<()> {
+        let database: Database = real_input().parse()?;
+        let n_fresh = database.count_available_fresh();
+        assert_eq!(868, n_fresh);
+        Ok(())
+    }
+
+    #[test]
+    pub fn part_two_count_all_fresh() -> anyhow::Result<()> {
+        let database: Database = TEST_INPUT.parse()?;
+        let n_all_fresh = database.count_all_fresh();
+        assert_eq!(n_all_fresh, 14);
+        Ok(())
+    }
+
+    #[test]
+    pub fn part_two_known_answer() -> anyhow::Result<()> {
+        let database: Database = real_input().parse()?;
+        let n_fresh = database.count_all_fresh();
+        assert_eq!(354143734113772, n_fresh);
         Ok(())
     }
 }
