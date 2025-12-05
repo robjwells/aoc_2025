@@ -13,7 +13,7 @@ static INPUT: &[&str] = &[
 ];
 
 static SOLVERS: &[fn(&str) -> anyhow::Result<String>] =
-    &[day01::solve, day02::solve, day03::solve, day04::solve];
+    &[day01::solve, day02::solve, day03::solve, day04::solve, day05::solve];
 
 pub fn get_input(day: usize) -> Option<&'static str> {
     INPUT.get(day - 1).copied()
