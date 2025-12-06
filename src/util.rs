@@ -60,3 +60,20 @@ impl Display for Answer {
 fn tracing_fixture() -> () {
     tracing_subscriber::fmt::init();
 }
+
+pub fn transpose<T>(rows: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    let Some(n_columns) = rows.first().map(Vec::len) else {
+        // Rows is empty
+        return rows;
+    };
+    let mut iterators: Vec<_> = rows.into_iter().map(|row| row.into_iter()).collect();
+    (0..n_columns)
+        .map(|_| {
+            // For each column, pop a number from each row (ie, take a column at a time).
+            iterators
+                .iter_mut()
+                .map(|row| row.next().unwrap())
+                .collect()
+        })
+        .collect()
+}

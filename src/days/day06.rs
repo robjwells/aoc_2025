@@ -47,23 +47,6 @@ impl Group {
     }
 }
 
-fn transpose<T>(rows: Vec<Vec<T>>) -> Vec<Vec<T>> {
-    let Some(n_columns) = rows.first().map(Vec::len) else {
-        // Rows is empty
-        return rows;
-    };
-    let mut iterators: Vec<_> = rows.into_iter().map(|row| row.into_iter()).collect();
-    (0..n_columns)
-        .map(|_| {
-            // For each column, pop a number from each row (ie, take a column at a time).
-            iterators
-                .iter_mut()
-                .map(|row| row.next().unwrap())
-                .collect()
-        })
-        .collect()
-}
-
 mod part_one {
     use nom::{
         IResult, Parser,
@@ -74,7 +57,7 @@ mod part_one {
         sequence::separated_pair,
     };
 
-    use crate::days::day06::transpose;
+    use crate::util::transpose;
 
     use super::{Group, Op};
 
@@ -124,7 +107,7 @@ mod part_one {
 mod part_two {
     use std::collections::VecDeque;
 
-    use crate::days::day06::transpose;
+    use crate::util::transpose;
 
     use super::{Group, Op};
 
@@ -176,7 +159,8 @@ mod part_two {
 mod test {
     use super::{Group, Op, part_one, part_two, sum_calculated_groups};
 
-    static TEST_INPUT: &str = "123 328  51 64 \n 45 64  387 23 \n  6 98  215 314 \n*   +   *   +  \n";
+    static TEST_INPUT: &str =
+        "123 328  51 64 \n 45 64  387 23 \n  6 98  215 314 \n*   +   *   +  \n";
 
     #[test]
     fn parse_test_input_part_one() -> anyhow::Result<()> {
