@@ -8,14 +8,32 @@ use nom::{
     multi::separated_list1,
     sequence::{preceded, separated_pair},
 };
+
+use crate::util::Answer;
+
 pub fn solve(input: &str) -> anyhow::Result<String> {
-    todo!()
+    let columns = parse_input(input)?;
+    let p1 = solve_part_one(&columns);
+    Answer::first(6, p1).report()
+}
+
+fn solve_part_one(columns: &[Column]) -> u64 {
+    columns.iter().map(Column::apply).sum()
 }
 
 #[derive(Debug, Eq, PartialEq)]
 enum Op {
     Add,
     Multiply,
+}
+
+impl Op {
+    fn apply(&self, a: u64, b: u64) -> u64 {
+        match self {
+            Op::Add => a + b,
+            Op::Multiply => a * b,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -27,6 +45,16 @@ struct Column {
 impl From<(Vec<u64>, Op)> for Column {
     fn from((numbers, operator): (Vec<u64>, Op)) -> Self {
         Self { numbers, operator }
+    }
+}
+
+impl Column {
+    fn apply(&self) -> u64 {
+        self.numbers
+            .iter()
+            .copied()
+            .reduce(|a, b| self.operator.apply(a, b))
+            .unwrap()
     }
 }
 
@@ -84,6 +112,8 @@ fn _parse_rows(input: &str) -> IResult<&str, (Vec<Vec<u64>>, Vec<Op>)> {
 
 #[cfg(test)]
 mod test {
+    use crate::days::day06::solve_part_one;
+
     use super::{Column, Op, parse_input};
 
     static TEST_INPUT: &str = "\
@@ -114,6 +144,24 @@ mod test {
             },
         ];
         let result = parse_input(TEST_INPUT)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    pub fn part_one_test_input() -> anyhow::Result<()> {
+        let columns = parse_input(TEST_INPUT)?;
+        let result = solve_part_one(&columns);
+        let expected = 4277556;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    pub fn part_one_known_answer() -> anyhow::Result<()> {
+        let columns = parse_input(crate::days::get_input(6).unwrap())?;
+        let result = solve_part_one(&columns);
+        let expected = 6503327062445;
         assert_eq!(result, expected);
         Ok(())
     }
