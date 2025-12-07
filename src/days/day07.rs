@@ -1,11 +1,12 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::util::Answer;
 
 pub fn solve(input: &str) -> anyhow::Result<String> {
     let grid = parse_input(input);
-    let p1 = grid.run_regular_split();
-    Answer::first(7, p1).report()
+    let p1 = grid.classic_split();
+    let p2 = grid.quantum_split();
+    Answer::first(7, p1).second(p2).report()
 }
 
 fn parse_input(input: &str) -> Grid {
@@ -36,7 +37,7 @@ struct Grid {
 }
 
 impl Grid {
-    fn run_regular_split(&self) -> usize {
+    fn classic_split(&self) -> usize {
         let mut beam_columns = BTreeSet::from([self.start_column]);
         let mut times_split = 0;
         for current_row in 1..=self.max_row {
@@ -52,6 +53,26 @@ impl Grid {
             }
         }
         times_split
+    }
+
+    fn quantum_split(&self) -> usize {
+        let mut timeline_cache = HashMap::from([(self.start_column, 1)]);
+        for current_row in 1..=self.max_row {
+            let mut new_timelines = HashMap::with_capacity(150);
+            for (beam_col, beam_timelines) in timeline_cache {
+                if self.splitters.contains(&(current_row, beam_col)) {
+                    // n timelines to the left
+                    *new_timelines.entry(beam_col - 1).or_default() += beam_timelines;
+                    // n timelines to the right
+                    *new_timelines.entry(beam_col + 1).or_default() += beam_timelines;
+                } else {
+                    // No splitter, so n timelines continue in current column
+                    *new_timelines.entry(beam_col).or_default() += beam_timelines;
+                }
+            }
+            timeline_cache = new_timelines;
+        }
+        timeline_cache.values().sum()
     }
 }
 
@@ -88,14 +109,28 @@ mod test {
     #[test]
     pub fn part_one_test_input() {
         let grid = super::parse_input(TEST_INPUT);
-        let times_split = grid.run_regular_split();
+        let times_split = grid.classic_split();
         assert_eq!(times_split, 21);
     }
 
     #[test]
     pub fn part_one_known_answer() {
         let grid = super::parse_input(crate::days::get_input(7).unwrap());
-        let times_split = grid.run_regular_split();
+        let times_split = grid.classic_split();
         assert_eq!(times_split, 1507);
+    }
+
+    #[test]
+    pub fn part_two_test_input() {
+        let grid = super::parse_input(TEST_INPUT);
+        let times_split = grid.quantum_split();
+        assert_eq!(times_split, 40);
+    }
+
+    #[test]
+    pub fn part_two_known_answer() {
+        let grid = super::parse_input(crate::days::get_input(7).unwrap());
+        let times_split = grid.quantum_split();
+        assert_eq!(times_split, 1537373473728);
     }
 }
