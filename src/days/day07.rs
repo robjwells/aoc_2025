@@ -56,23 +56,26 @@ impl Grid {
     }
 
     fn quantum_split(&self) -> usize {
-        let mut timeline_cache = HashMap::from([(self.start_column, 1)]);
+        let mut timeline_cache = vec![(self.start_column, 1)];
+        let mut working_cache = HashMap::with_capacity(150);
         for current_row in 1..=self.max_row {
-            let mut new_timelines = HashMap::with_capacity(150);
             for (beam_col, beam_timelines) in timeline_cache {
                 if self.splitters.contains(&(current_row, beam_col)) {
                     // n timelines to the left
-                    *new_timelines.entry(beam_col - 1).or_default() += beam_timelines;
+                    *working_cache.entry(beam_col - 1).or_default() += beam_timelines;
                     // n timelines to the right
-                    *new_timelines.entry(beam_col + 1).or_default() += beam_timelines;
+                    *working_cache.entry(beam_col + 1).or_default() += beam_timelines;
                 } else {
                     // No splitter, so n timelines continue in current column
-                    *new_timelines.entry(beam_col).or_default() += beam_timelines;
+                    *working_cache.entry(beam_col).or_default() += beam_timelines;
                 }
             }
-            timeline_cache = new_timelines;
+            timeline_cache = working_cache.drain().collect();
         }
-        timeline_cache.values().sum()
+        timeline_cache
+            .into_iter()
+            .map(|(_, timelines)| timelines)
+            .sum()
     }
 }
 
