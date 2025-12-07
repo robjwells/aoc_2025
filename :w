@@ -44,27 +44,26 @@ impl Grid {
     }
 
     fn filled_neighbours(&self, location: &(usize, usize)) -> usize {
-        let possible = {
-            let (row, col) = *location;
-            [
-                // Row above
-                (row - 1, col - 1),
-                (row - 1, col),
-                (row - 1, col + 1),
-                // Same row
-                (row, col - 1),
-                (row, col + 1),
-                // Row below
-                (row + 1, col - 1),
-                (row + 1, col),
-                (row + 1, col + 1),
-            ]
-        };
+        let (row, col) = *location;
+        let possible = [
+            // Row above
+            (row - 1, col - 1),
+            (row - 1, col),
+            (row - 1, col + 1),
+            // Same row
+            (row, col - 1),
+            (row, col + 1),
+            // Row below
+            (row + 1, col - 1),
+            (row + 1, col),
+            (row + 1, col + 1),
+        ];
+        // There is a noticeable slow down here with .iter().filter().collect(), 3ms average.
         let mut count = 0;
         let mut buf = self.neighbour_buf.borrow_mut();
-        for loc @ (row, col) in possible {
+        for (row, col) in possible {
             if self.filled[row][col] {
-                buf[count] = loc;
+                buf[count] = (row, col);
                 count += 1;
             }
         }
@@ -82,19 +81,16 @@ impl Grid {
     }
 
     fn is_accessible(&self, location: (usize, usize)) -> bool {
-        self.filled_neighbours(&location) < 4
+        self.filled_neighbours(&location).len() < 4
     }
 
     fn remove_accessible(&mut self) -> usize {
         let mut removed = 0;
-        let mut buf = [(0, 0); 8];
         while let Some(roll) = self.pending_removal.pop_front() {
             self.filled[roll.0][roll.1] = false;
             removed += 1;
             // Maybe some neighbours can now be removed.
-            let n_neighbours = self.filled_neighbours(&roll);
-            buf[..n_neighbours].copy_from_slice(&self.neighbour_buf.borrow()[..n_neighbours]);
-            for &neighbour in &buf[..n_neighbours] {
+            for neighbour in self.filled_neighbours(&roll) {
                 // Check we haven't already put this neighbour in the queue.
                 if !self.already_queued(neighbour) && self.is_accessible(neighbour) {
                     self.queue_for_removal(neighbour);
@@ -156,8 +152,7 @@ mod test {
     #[test]
     fn test_input_neighbours() {
         let grid = Grid::from(TEST_INPUT);
-        let n_neighbours = grid.filled_neighbours(&(5, 10));
-        let mut neighbours = grid.neighbour_buf.borrow()[..n_neighbours].to_vec();
+        let mut neighbours = grid.filled_neighbours(&(5, 10)).to_vec();
         neighbours.sort();
         let mut expected = vec![(4, 9), (5, 9), (6, 10)];
         expected.sort();

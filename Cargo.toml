@@ -11,3 +11,7 @@ nom = "8.0.0"
 rstest = "0.26.1"
 tracing = "0.1.43"
 tracing-subscriber = "0.3.22"
+
+[profile.profiling]
+inherits = "release"
+debug = true
