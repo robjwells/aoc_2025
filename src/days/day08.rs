@@ -143,15 +143,15 @@ impl Graph {
 }
 
 fn min_heap_from_points(points: &[Point]) -> BinaryHeap<Reverse<Edge>> {
-    let edges = points.iter().enumerate().combinations(2).map(|pair| {
-        let (a_id, a) = pair[0];
-        let (b_id, b) = pair[1];
-        Edge {
+    let edges = points
+        .iter()
+        .enumerate()
+        .tuple_combinations()
+        .map(|((a_id, a), (b_id, b))| Edge {
             a_id,
             b_id,
             distance: a.distance_to(b),
-        }
-    });
+        });
     let mut ordered_edges = BinaryHeap::with_capacity(points.len().pow(2));
     for edge in edges {
         ordered_edges.push(Reverse(edge));
