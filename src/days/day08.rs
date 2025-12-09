@@ -35,11 +35,10 @@ fn solve_part_two(graph: &mut Graph) -> u64 {
 struct Point(u64, u64, u64);
 
 impl Point {
-    fn distance_to(&self, other: &Self) -> u64 {
-        (self.0.abs_diff(other.0).pow(2)
+    fn squared_distance(&self, other: &Self) -> u64 {
+        self.0.abs_diff(other.0).pow(2)
             + self.1.abs_diff(other.1).pow(2)
-            + self.2.abs_diff(other.2).pow(2))
-        .isqrt()
+            + self.2.abs_diff(other.2).pow(2)
     }
 }
 
@@ -71,6 +70,7 @@ struct Edge {
     b_id: usize,
 }
 
+// "Graph" but it's really a disjoint set/union-find data structure.
 struct Graph {
     points: Vec<Point>,
     parents: Vec<usize>,
@@ -158,7 +158,7 @@ fn min_heap_from_points(points: &[Point]) -> BinaryHeap<Reverse<Edge>> {
         .map(|((a_id, a), (b_id, b))| Edge {
             a_id,
             b_id,
-            distance: a.distance_to(b),
+            distance: a.squared_distance(b),
         });
     let mut ordered_edges = BinaryHeap::with_capacity(points.len().pow(2));
     for edge in edges {
@@ -169,7 +169,7 @@ fn min_heap_from_points(points: &[Point]) -> BinaryHeap<Reverse<Edge>> {
 
 #[cfg(test)]
 mod test {
-    use super::{Edge, Graph, Point, parse_input, solve_part_one, solve_part_two};
+    use super::{Graph, Point, parse_input, solve_part_one, solve_part_two};
 
     static TEST_INPUT: &str = "\
 162,817,812
@@ -207,30 +207,11 @@ mod test {
         let points = parse_input(TEST_INPUT).unwrap();
         let graph = Graph::new(points);
         let mut heap = graph.ordered_edges;
-        assert_eq!(
-            heap.pop().unwrap().0,
-            Edge {
-                distance: 316,
-                a_id: 0,
-                b_id: 19
-            }
-        );
-        assert_eq!(
-            heap.pop().unwrap().0,
-            Edge {
-                distance: 321,
-                a_id: 0,
-                b_id: 7,
-            }
-        );
-        assert_eq!(
-            heap.pop().unwrap().0,
-            Edge {
-                distance: 322,
-                a_id: 2,
-                b_id: 13,
-            }
-        );
+        let expected = [(0, 19), (0, 7), (2, 13)];
+        for ids in expected {
+            let edge = heap.pop().unwrap().0;
+            assert_eq!((edge.a_id, edge.b_id), ids);
+        }
     }
 
     #[test]
