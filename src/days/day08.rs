@@ -1,14 +1,12 @@
-#![allow(dead_code, unused, unused_mut)]
-
 use std::{cmp::Reverse, collections::BinaryHeap, str::FromStr};
 
 use itertools::Itertools;
 use nom::{
     Parser,
     bytes::complete::tag,
-    character::complete::{newline, u64},
+    character::complete::u64,
     combinator::{eof, opt},
-    multi::{count, many0, separated_list1},
+    multi::count,
     sequence::terminated,
 };
 
@@ -16,15 +14,21 @@ use crate::util::Answer;
 pub fn solve(input: &str) -> anyhow::Result<String> {
     let mut graph = Graph::new(parse_input(input)?);
     let p1 = solve_part_one(&mut graph, 1000)?;
-    Answer::first(8, p1).report()
+    let p2 = solve_part_two(&mut graph);
+    Answer::first(8, p1).second(p2).report()
 }
 
-fn solve_part_one(graph: &mut Graph, connections: usize) -> anyhow::Result<usize> {
+fn solve_part_one(graph: &mut Graph, connections: usize) -> anyhow::Result<u64> {
     graph
         .connect_closest(connections)
         .map_err(|n_connected| anyhow::anyhow!("Could only connect {n_connected}"))?;
-    let p = graph.largest_components(3).into_iter().product();
-    Ok(p)
+    let p: usize = graph.largest_components(3).into_iter().product();
+    Ok(p as u64)
+}
+
+fn solve_part_two(graph: &mut Graph) -> u64 {
+    let (a, b) = graph.exhaust().unwrap();
+    a.0 * b.0
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -72,17 +76,19 @@ struct Graph {
     parents: Vec<usize>,
     sizes: Vec<usize>,
     ordered_edges: BinaryHeap<Reverse<Edge>>,
+    n_components: usize,
 }
 
 impl Graph {
     fn new(points: Vec<Point>) -> Self {
-        let n_points = points.len();
+        let n_components = points.len();
         let ordered_edges = min_heap_from_points(&points);
         Self {
             points,
-            parents: (0..n_points).collect(),
-            sizes: vec![1; n_points],
+            parents: (0..n_components).collect(),
+            sizes: vec![1; n_components],
             ordered_edges,
+            n_components,
         }
     }
 
@@ -104,24 +110,21 @@ impl Graph {
         let a_root_size = self.sizes[a_root];
         let b_root_size = self.sizes[b_root];
         if a_root_size >= b_root_size {
-            // self.parents[a] = a_root;
             self.parents[b] = a_root;
             self.parents[b_root] = a_root;
             self.sizes[a_root] += self.sizes[b_root];
             self.sizes[b_root] = 0;
         } else {
             self.parents[a] = b_root;
-            // self.parents[b] = b_root;
             self.parents[a_root] = b_root;
             self.sizes[b_root] += self.sizes[a_root];
             self.sizes[a_root] = 0;
         }
+        self.n_components = self.n_components.strict_sub(1);
         true
     }
 
     fn connect_closest(&mut self, n: usize) -> Result<(), usize> {
-        let mut connected = 0;
-
         for connected in 0..n {
             let Some(Reverse(edge)) = self.ordered_edges.pop() else {
                 return Err(connected);
@@ -131,14 +134,19 @@ impl Graph {
         Ok(())
     }
 
+    fn exhaust(&mut self) -> Option<(Point, Point)> {
+        while let Some(Reverse(edge)) = self.ordered_edges.pop() {
+            if self.union(edge.a_id, edge.b_id) && self.n_components == 1 {
+                return Some((self.points[edge.a_id], self.points[edge.b_id]));
+            }
+        }
+        None
+    }
+
     fn largest_components(&self, n: usize) -> Vec<usize> {
         let mut v = self.sizes.clone();
         v.sort_unstable();
-        v.into_iter().rev().take(3).collect()
-    }
-
-    fn n_components(&self) -> usize {
-        self.sizes.iter().filter(|n| **n != 0).count()
+        v.into_iter().rev().take(n).collect()
     }
 }
 
@@ -161,11 +169,7 @@ fn min_heap_from_points(points: &[Point]) -> BinaryHeap<Reverse<Edge>> {
 
 #[cfg(test)]
 mod test {
-    use std::cmp::Reverse;
-
-    use crate::days::day08::solve_part_one;
-
-    use super::{Edge, Graph, Point, parse_input};
+    use super::{Edge, Graph, Point, parse_input, solve_part_one, solve_part_two};
 
     static TEST_INPUT: &str = "\
 162,817,812
@@ -241,6 +245,7 @@ mod test {
     pub fn part_one_test_input() {
         let mut graph = Graph::new(parse_input(TEST_INPUT).unwrap());
         assert_eq!(solve_part_one(&mut graph, 10).unwrap(), 40);
+        assert_eq!(graph.n_components, 11);
     }
 
     #[test]
@@ -248,5 +253,25 @@ mod test {
         let points = parse_input(crate::days::get_input(8).unwrap()).unwrap();
         let mut graph = Graph::new(points);
         assert_eq!(solve_part_one(&mut graph, 1000).unwrap(), 54600);
+    }
+
+    #[test]
+    pub fn exhaust_test_input() {
+        let mut graph = Graph::new(parse_input(TEST_INPUT).unwrap());
+        let o = graph.exhaust();
+        assert_eq!(o, Some((Point(216, 146, 977), Point(117, 168, 530))));
+    }
+
+    #[test]
+    pub fn part_two_test_input() {
+        let mut graph = Graph::new(parse_input(TEST_INPUT).unwrap());
+        assert_eq!(solve_part_two(&mut graph), 25272);
+    }
+
+    #[test]
+    pub fn part_two_known_answer() {
+        let points = parse_input(crate::days::get_input(8).unwrap()).unwrap();
+        let mut graph = Graph::new(points);
+        assert_eq!(solve_part_two(&mut graph), 107256172);
     }
 }
