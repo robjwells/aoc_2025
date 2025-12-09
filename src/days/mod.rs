@@ -6,6 +6,7 @@ pub mod day05;
 pub mod day06;
 pub mod day07;
 pub mod day08;
+pub mod day09;
 
 static INPUT: &[&str] = &[
     include_str!("../../input/2025-01.txt"),
@@ -16,6 +17,7 @@ static INPUT: &[&str] = &[
     include_str!("../../input/2025-06.txt"),
     include_str!("../../input/2025-07.txt"),
     include_str!("../../input/2025-08.txt"),
+    include_str!("../../input/2025-09.txt"),
 ];
 
 static SOLVERS: &[fn(&str) -> anyhow::Result<String>] = &[
@@ -27,6 +29,7 @@ static SOLVERS: &[fn(&str) -> anyhow::Result<String>] = &[
     day06::solve,
     day07::solve,
     day08::solve,
+    day09::solve,
 ];
 
 pub fn get_input(day: usize) -> Option<&'static str> {
